@@ -10,6 +10,7 @@
 
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/textInputLogin"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:errorEnabled="true">
@@ -22,6 +23,7 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/textInputPassword"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:passwordToggleEnabled="true"
@@ -33,4 +35,17 @@
             android:layout_height="wrap_content">
         </com.google.android.material.textfield.TextInputEditText>
     </com.google.android.material.textfield.TextInputLayout>
+
+        <Button
+            android:onClick="loginSignUpUser"
+            android:text="@string/signUp"
+            android:id="@+id/loginSignUpButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/design_default_color_on_primary"
+            android:layout_marginTop="100dp"
+            android:textSize="16sp">
+
+        </Button>
+
 </LinearLayout>
