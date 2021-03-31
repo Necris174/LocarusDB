@@ -36,6 +36,13 @@
         </com.google.android.material.textfield.TextInputEditText>
     </com.google.android.material.textfield.TextInputLayout>
 
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="invisible"
+        />
         <Button
             android:onClick="loginSignUpUser"
             android:text="@string/signUp"
@@ -43,9 +50,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/design_default_color_on_primary"
-            android:layout_marginTop="100dp"
+            android:layout_marginTop="30dp"
             android:textSize="16sp">
 
         </Button>
+
+
 
 </LinearLayout>
