@@ -119,13 +119,13 @@ public class MainActivity extends AppCompatActivity {
                 editor.putString("refreshToken", refreshToken);
                 editor.apply();
                 Log.d(Constants.TAG, accessToken);
-                isLoginAvailable = true;
                 Intent intent = new Intent(MainActivity.this,SensorsActivity.class);
                 startActivity(intent);
                 finish();
             } catch (JSONException e) {
                 Log.d(Constants.TAG, e + "");
-                isLoginAvailable = false;
+                signUp.setEnabled(true);
+                progressBar.setVisibility(View.GONE);
                 Toast toast = Toast.makeText(getApplicationContext(), e.toString(),Toast.LENGTH_LONG);
                 toast.show();
             }

@@ -1,5 +1,7 @@
 package com.example.locarusdt2;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -8,6 +10,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.hardware.Sensor;
 import android.os.Bundle;
+import android.os.PersistableBundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -28,7 +31,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -37,11 +42,13 @@ import java.util.concurrent.TimeoutException;
 
 public class SensorsActivity extends AppCompatActivity {
 
-    SharedPreferences tokens;
-    SharedPreferences.Editor editor;
-    String userUUID;
-    String accessToken;
-    String deviceID;
+    private SharedPreferences tokens;
+    private SharedPreferences.Editor editor;
+    private String userUUID;
+    private String accessToken;
+    private String deviceID;
+    private Long expires;
+    private String refreshToken;
     private ArrayList<Sensors> sensorsArrayList = new ArrayList<>();
 
     private RecyclerView recyclerView;
@@ -49,31 +56,23 @@ public class SensorsActivity extends AppCompatActivity {
     private RecyclerView.LayoutManager layoutManager;
     RequestQueue requestQueue;
     ArrayList<SensorCard> arrayList;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sensors);
         tokens = getSharedPreferences("Token", MODE_PRIVATE);
         editor = tokens.edit();
-        accessToken = tokens.getString("accessToken","");
+        accessToken = tokens.getString("accessToken", "");
         Log.d(Constants.TAG, "Запуск окна датчиков");
         arrayList = new ArrayList<>();
 
-        getJSon(JsonRequestCurrentUser.currentUser(),"userUUID");
-
-
-//        Thread devicesListThread = new Thread(() -> getJSon(JsonRequestDevicesList.devicesList(userUUID),"deviceID"));
-//        Thread tailGetThread = new Thread(() -> getJSon(JsonRequestTailGet.tailGet(deviceID),"tail"));
-//        Thread arrayListThread = new Thread(() -> {
-//            for (Sensors sensors : sensorsArrayList) {
-//                arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors.getValue(),sensors.getName()));
-//            }
-//            runOnUiThread(() -> adapter.notifyDataSetChanged());
-//        });
-
-        //getJSon1(JsonRequestCurrentUser.currentUser(),"userUUID");
-//        getJSon1(JsonRequestDevicesList.devicesList(userUUID),"deviceID");
-//        getJSon1(JsonRequestTailGet.tailGet(deviceID),"tail");
+        // Проверяем savedInstanceState.
+        if (savedInstanceState == null || !savedInstanceState.containsKey("array")) {
+            getJSon(JsonRequestCurrentUser.currentUser(), "userUUID");
+        } else {
+            arrayList = savedInstanceState.getParcelableArrayList("array");
+        }
 
         recyclerView = findViewById(R.id.recyclerView);
         recyclerView.setHasFixedSize(true);
@@ -82,24 +81,48 @@ public class SensorsActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(layoutManager);
 
-        }
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(60000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                if (tokens.getLong("expires", 0) - 30 < System.currentTimeMillis() / 1000L) {
+                    Date date = new java.util.Date(tokens.getLong("expires",0)*1000L);
+                    SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+                    sdf.setTimeZone(java.util.TimeZone.getTimeZone("GMT+5"));
+                    String formattedDate = sdf.format(date);
+                    Log.d(Constants.TAG, "expires протух" + formattedDate);
+                    getJSon(JsonRequestRefresh.refresh(tokens.getString("refreshToken", "")), "refresh");
+                }
+                getJSon(JsonRequestTailGet.tailGet(deviceID), "tail");
+            }
+        }).start();
 
+    }
 
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putParcelableArrayList("array", arrayList);
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater menuInflater = getMenuInflater();
-        menuInflater.inflate(R.menu.sensor_menu,menu);
+        menuInflater.inflate(R.menu.sensor_menu, menu);
         return true;
     }
 
+    // Меню настроек.
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()){
+        switch (item.getItemId()) {
             case R.id.sign_out:
                 editor.remove("accessToken");
                 editor.apply();
-                startActivity(new Intent(this,MainActivity.class));
+                startActivity(new Intent(this, MainActivity.class));
                 finish();
                 return true;
             default:
@@ -107,12 +130,13 @@ public class SensorsActivity extends AppCompatActivity {
         }
     }
 
-
+    // Действие при нажатии на кнопку Back в Android.
     @Override
-    public void onBackPressed () {
+    public void onBackPressed() {
         moveTaskToBack(true);
     }
 
+    // Метод отвечающий за отправку и обработку Json запросов.
     private void getJSon(JSONObject postData, String flag) {
         String postUrl = "http://stage.local/api/";
         RequestQueue requestQueue = Volley.newRequestQueue(getApplicationContext());
@@ -124,41 +148,53 @@ public class SensorsActivity extends AppCompatActivity {
                     switch (flag) {
                         case "userUUID":
                             userUUID = response.getJSONObject("result").getString("userID");
-                            getJSon(JsonRequestDevicesList.devicesList(userUUID),"deviceID");
-                            Log.d(Constants.TAG, userUUID);
+                            getJSon(JsonRequestDevicesList.devicesList(userUUID), "deviceID");
                             break;
                         case "deviceID":
                             JSONArray array = response.getJSONArray("result");
                             for (int i = 0; i < array.length(); i++) {
                                 deviceID = array.getJSONObject(i).getString("deviceID");
-                                getJSon(JsonRequestTailGet.tailGet(deviceID),"tail");
+                                getJSon(JsonRequestTailGet.tailGet(deviceID), "tail");
                             }
-                            Log.d(Constants.TAG, deviceID);
                             break;
                         case "tail":
                             Log.d(Constants.TAG, "Хвосты");
+
                             JSONArray sensors = null;
                             JSONArray array1 = response.getJSONArray("result");
                             for (int i = 0; i < array1.length(); i++) {
                                 JSONObject jsonObject = array1.getJSONObject(i);
                                 sensors = jsonObject.getJSONArray("sensors");
                             }
-                            for (int i = 0; i < sensors.length(); i++) {
-                                String name = sensors.getJSONObject(i).getString("name");
-                                String value = sensors.getJSONObject(i).getString("value");
-                                String units = sensors.getJSONObject(i).getString("units");
-                                String varName = sensors.getJSONObject(i).getString("varName");
-                                Integer ooType = sensors.getJSONObject(i).getInt("ooType");
-                                Long time = sensors.getJSONObject(i).getLong("time");
-                                Sensors sensor = new Sensors(name, value, units, varName, ooType, time);
-                                sensorsArrayList.add(sensor);
-                            }
-                            for (Sensors sensors1 : sensorsArrayList) {
-                                arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors1.getValue(),sensors1.getName()));
-                            }
-                            runOnUiThread(() -> adapter.notifyDataSetChanged());
-                            break;
+                            if(sensors!=null && sensors.length()!=0) {
+                                arrayList.clear();
+                                sensorsArrayList.clear();
 
+                                for (int i = 0; i < sensors.length(); i++) {
+                                    String name = sensors.getJSONObject(i).getString("name");
+                                    String value = sensors.getJSONObject(i).getString("value");
+                                    String units = sensors.getJSONObject(i).getString("units");
+                                    String varName = sensors.getJSONObject(i).getString("varName");
+                                    Integer ooType = sensors.getJSONObject(i).getInt("ooType");
+                                    Long time = sensors.getJSONObject(i).getLong("time");
+                                    Sensors sensor = new Sensors(name, value, units, varName, ooType, time);
+                                    sensorsArrayList.add(sensor);
+                                }
+                                for (Sensors sensors1 : sensorsArrayList) {
+                                    arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors1.getValue(), sensors1.getName()));
+                                }
+                                runOnUiThread(() -> adapter.notifyDataSetChanged());
+                            }
+                            break;
+                        case "refresh":
+                            accessToken = response.getJSONObject("result").getString("accessToken");
+                            expires = response.getJSONObject("result").getLong("expires");
+                            refreshToken = response.getJSONObject("result").getString("refreshToken");
+                            editor.putString("accessToken", accessToken);
+                            editor.putLong("expires", expires);
+                            editor.putString("refreshToken", refreshToken);
+                            editor.apply();
+                            break;
                     }
                 } catch (JSONException e) {
                     Log.d(Constants.TAG, e + "");
@@ -170,7 +206,7 @@ public class SensorsActivity extends AppCompatActivity {
             }
         }, error -> {
             Log.d(Constants.TAG, "Ответ от сервера " + error);
-            Toast toast = Toast.makeText(getApplicationContext(), error.toString(),Toast.LENGTH_SHORT);
+            Toast toast = Toast.makeText(getApplicationContext(), error.toString(), Toast.LENGTH_SHORT);
             toast.show();
         }) {
             @Override
@@ -179,7 +215,7 @@ public class SensorsActivity extends AppCompatActivity {
                 headers.put("Accept", "application/json");
                 headers.put("Content-Type", "application/json");
                 headers.put("X-Client-Type", "drivertask");
-                headers.put("Authorization", "Bearer "+ accessToken);
+                headers.put("Authorization", "Bearer " + accessToken);
 
                 return headers;
             }
@@ -203,19 +239,19 @@ public class SensorsActivity extends AppCompatActivity {
         requestQueue.add(jsonObjectRequest);
     }
 
-    private void getJSon1(JSONObject postData, String flag){
+    private void getJSon1(JSONObject postData, String flag) {
         requestQueue = Volley.newRequestQueue(getApplicationContext());
         String postUrl = "http://stage.local/api/";
         RequestFuture<JSONObject> future = RequestFuture.newFuture();
-        Log.d(Constants.TAG,postData.toString());
-        JsonObjectRequest request = new JsonObjectRequest(Request.Method.POST, postUrl, postData, future, future){
+        Log.d(Constants.TAG, postData.toString());
+        JsonObjectRequest request = new JsonObjectRequest(Request.Method.POST, postUrl, postData, future, future) {
             @Override
             public Map<String, String> getHeaders() throws AuthFailureError {
                 Map<String, String> headers = new HashMap<>();
                 headers.put("Accept", "application/json");
                 headers.put("Content-Type", "application/json");
                 headers.put("X-Client-Type", "drivertask");
-                headers.put("Authorization", "Bearer "+ accessToken);
+                headers.put("Authorization", "Bearer " + accessToken);
                 return headers;
             }
         };
@@ -224,7 +260,7 @@ public class SensorsActivity extends AppCompatActivity {
         JSONObject response = null;
 
         try {
-            response = future.get(10,TimeUnit.SECONDS);
+            response = future.get(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (ExecutionException e) {
@@ -236,5 +272,5 @@ public class SensorsActivity extends AppCompatActivity {
         // do something with response
 
         Log.d(Constants.TAG, response + "");
-        }
     }
+}

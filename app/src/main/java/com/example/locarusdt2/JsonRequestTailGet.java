@@ -17,6 +17,7 @@ public class JsonRequestTailGet {
             postData.put("method", "tail.get");
             postData.put("id", "12345");
             user.put("deviceID", deviceID);
+            user.put("lastTime",System.currentTimeMillis());
             postData.put("params", jsonArray);
             jsonArray.put(user);
 
