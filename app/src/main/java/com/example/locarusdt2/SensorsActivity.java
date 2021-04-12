@@ -32,6 +32,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -49,12 +51,13 @@ public class SensorsActivity extends AppCompatActivity {
     private String deviceID;
     private Long expires;
     private String refreshToken;
-    private ArrayList<Sensors> sensorsArrayList = new ArrayList<>();
+    private ArrayList<Sensors> sensorsArrayList;
+    private ArrayList<String> activeSensors;
+    private Thread thread;
 
     private RecyclerView recyclerView;
     private RecyclerView.Adapter adapter;
     private RecyclerView.LayoutManager layoutManager;
-    RequestQueue requestQueue;
     ArrayList<SensorCard> arrayList;
 
     @Override
@@ -63,12 +66,20 @@ public class SensorsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_sensors);
         tokens = getSharedPreferences("Token", MODE_PRIVATE);
         editor = tokens.edit();
+        Log.d(Constants.TAG1, "Запуск окна датчиков");
+        if (tokens.contains("active")) {
+            activeSensors = SharedPreferencesReceive.getActiveSensorsSt(tokens.getString("active", ""));
+            Log.d(Constants.TAG1, "Окно датчиков (активные) " + activeSensors.toString());
+        }
+
         accessToken = tokens.getString("accessToken", "");
-        Log.d(Constants.TAG, "Запуск окна датчиков");
+
         arrayList = new ArrayList<>();
+        sensorsArrayList = new ArrayList<>();
 
         // Проверяем savedInstanceState.
         if (savedInstanceState == null || !savedInstanceState.containsKey("array")) {
+            Log.d(Constants.TAG, "Первый запуск окна");
             getJSon(JsonRequestCurrentUser.currentUser(), "userUUID");
         } else {
             arrayList = savedInstanceState.getParcelableArrayList("array");
@@ -81,25 +92,43 @@ public class SensorsActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(layoutManager);
 
-        new Thread(() -> {
+         thread = new Thread(() -> {
+            Log.d(Constants.TAG, "Запукаем поток получения хвостов");
             while (true) {
                 try {
                     Thread.sleep(60000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
+                Date date = new java.util.Date(tokens.getLong("expires",0)*1000L);
+                SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+                sdf.setTimeZone(java.util.TimeZone.getTimeZone("GMT+5"));
+                String formattedDate = sdf.format(date);
+                Log.d(Constants.TAG, "expires протух" + formattedDate);
                 if (tokens.getLong("expires", 0) - 30 < System.currentTimeMillis() / 1000L) {
-                    Date date = new java.util.Date(tokens.getLong("expires",0)*1000L);
-                    SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
-                    sdf.setTimeZone(java.util.TimeZone.getTimeZone("GMT+5"));
-                    String formattedDate = sdf.format(date);
-                    Log.d(Constants.TAG, "expires протух" + formattedDate);
                     getJSon(JsonRequestRefresh.refresh(tokens.getString("refreshToken", "")), "refresh");
                 }
                 getJSon(JsonRequestTailGet.tailGet(deviceID), "tail");
             }
-        }).start();
+        });
+            thread.start();
+    }
 
+    @Override
+    protected void onRestart() {
+        arrayList.clear();
+        super.onRestart();
+        if (tokens.contains("active")) {
+            activeSensors = SharedPreferencesReceive.getActiveSensorsSt(tokens.getString("active", ""));
+            Log.d(Constants.TAG1, "Окно датчиков (активные) " + activeSensors.toString());
+        }
+        sensorsArrayList = SharedPreferencesReceive.getSensors(tokens.getString("arraySensors", ""));
+        for (Sensors sensors1 : sensorsArrayList) {
+            if (activeSensors.contains(sensors1.getName())){
+                arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors1.getValue(), sensors1.getName()));
+            }
+        }
+        runOnUiThread(() -> adapter.notifyDataSetChanged());
     }
 
     @Override
@@ -108,6 +137,7 @@ public class SensorsActivity extends AppCompatActivity {
         outState.putParcelableArrayList("array", arrayList);
     }
 
+    // добавляем раздел Меню
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater menuInflater = getMenuInflater();
@@ -121,13 +151,23 @@ public class SensorsActivity extends AppCompatActivity {
         switch (item.getItemId()) {
             case R.id.sign_out:
                 editor.remove("accessToken");
+                editor.remove("active");
                 editor.apply();
                 startActivity(new Intent(this, MainActivity.class));
                 finish();
                 return true;
+            case R.id.settings:
+              startActivity(new Intent(this,SensorList.class));
+              return true;
             default:
                 return super.onOptionsItemSelected(item);
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        thread.interrupt();
     }
 
     // Действие при нажатии на кнопку Back в Android.
@@ -138,55 +178,66 @@ public class SensorsActivity extends AppCompatActivity {
 
     // Метод отвечающий за отправку и обработку Json запросов.
     private void getJSon(JSONObject postData, String flag) {
-        String postUrl = "http://stage.local/api/";
+        String postUrl = Constants.SERVER;
         RequestQueue requestQueue = Volley.newRequestQueue(getApplicationContext());
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.POST, postUrl, postData, new Response.Listener<JSONObject>() {
             @Override
             public void onResponse(JSONObject response) {
-                Log.d(Constants.TAG, "Ответ от сервера " + response.toString() + "\n");
+
                 try {
                     switch (flag) {
                         case "userUUID":
+                            Log.d(Constants.TAG, "Ответ на userUUID " + response.toString() + "\n");
                             userUUID = response.getJSONObject("result").getString("userID");
                             getJSon(JsonRequestDevicesList.devicesList(userUUID), "deviceID");
                             break;
                         case "deviceID":
+                            Log.d(Constants.TAG, "Ответ на deviceID " + response.toString() + "\n");
                             JSONArray array = response.getJSONArray("result");
                             for (int i = 0; i < array.length(); i++) {
                                 deviceID = array.getJSONObject(i).getString("deviceID");
-                                getJSon(JsonRequestTailGet.tailGet(deviceID), "tail");
                             }
+                            getJSon(JsonRequestTailGet.tailGet(deviceID), "tail");
                             break;
                         case "tail":
-                            Log.d(Constants.TAG, "Хвосты");
-
+                            Log.d(Constants.TAG, "Ответ на Хвосты " + response.toString() + "\n");
                             JSONArray sensors = null;
                             JSONArray array1 = response.getJSONArray("result");
+
                             for (int i = 0; i < array1.length(); i++) {
                                 JSONObject jsonObject = array1.getJSONObject(i);
                                 sensors = jsonObject.getJSONArray("sensors");
                             }
-                            if(sensors!=null && sensors.length()!=0) {
-                                arrayList.clear();
-                                sensorsArrayList.clear();
+                            if (sensors!=null) {
+                                editor.putString("arraySensors", sensors.toString());
+                                editor.apply();
+                                if (sensors.length() != 0) {
+                                    arrayList.clear();
+                                    sensorsArrayList.clear();
+                                    for (int i = 0; i < sensors.length(); i++) {
+                                        String name = sensors.getJSONObject(i).getString("name");
+                                        String value = sensors.getJSONObject(i).getString("value");
+                                        String units = sensors.getJSONObject(i).getString("units");
+                                        String varName = sensors.getJSONObject(i).getString("varName");
+                                        Integer ooType = sensors.getJSONObject(i).getInt("ooType");
+                                        Long time = sensors.getJSONObject(i).getLong("time");
+                                        Sensors sensor = new Sensors(name, value, units, varName, ooType, time);
 
-                                for (int i = 0; i < sensors.length(); i++) {
-                                    String name = sensors.getJSONObject(i).getString("name");
-                                    String value = sensors.getJSONObject(i).getString("value");
-                                    String units = sensors.getJSONObject(i).getString("units");
-                                    String varName = sensors.getJSONObject(i).getString("varName");
-                                    Integer ooType = sensors.getJSONObject(i).getInt("ooType");
-                                    Long time = sensors.getJSONObject(i).getLong("time");
-                                    Sensors sensor = new Sensors(name, value, units, varName, ooType, time);
-                                    sensorsArrayList.add(sensor);
+                                        if (activeSensors!=null&&activeSensors.contains(name)) {
+                                            sensorsArrayList.add(sensor);
+                                        }
+                                    }
+                                    Log.d(Constants.TAG1, "Карточки для отображения: " + sensorsArrayList.toString());
+                                    for (Sensors sensors1 : sensorsArrayList) {
+                                        arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors1.getValue(), sensors1.getName()));
+                                    }
+
+                                    runOnUiThread(() -> adapter.notifyDataSetChanged());
                                 }
-                                for (Sensors sensors1 : sensorsArrayList) {
-                                    arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors1.getValue(), sensors1.getName()));
-                                }
-                                runOnUiThread(() -> adapter.notifyDataSetChanged());
                             }
                             break;
                         case "refresh":
+                            Log.d(Constants.TAG, "Ответ на refresh " + response.toString() + "\n");
                             accessToken = response.getJSONObject("result").getString("accessToken");
                             expires = response.getJSONObject("result").getLong("expires");
                             refreshToken = response.getJSONObject("result").getString("refreshToken");
@@ -239,38 +290,4 @@ public class SensorsActivity extends AppCompatActivity {
         requestQueue.add(jsonObjectRequest);
     }
 
-    private void getJSon1(JSONObject postData, String flag) {
-        requestQueue = Volley.newRequestQueue(getApplicationContext());
-        String postUrl = "http://stage.local/api/";
-        RequestFuture<JSONObject> future = RequestFuture.newFuture();
-        Log.d(Constants.TAG, postData.toString());
-        JsonObjectRequest request = new JsonObjectRequest(Request.Method.POST, postUrl, postData, future, future) {
-            @Override
-            public Map<String, String> getHeaders() throws AuthFailureError {
-                Map<String, String> headers = new HashMap<>();
-                headers.put("Accept", "application/json");
-                headers.put("Content-Type", "application/json");
-                headers.put("X-Client-Type", "drivertask");
-                headers.put("Authorization", "Bearer " + accessToken);
-                return headers;
-            }
-        };
-        future.setRequest(requestQueue.add(request));
-        requestQueue.add(request);
-        JSONObject response = null;
-
-        try {
-            response = future.get(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (ExecutionException e) {
-            e.printStackTrace();
-        } catch (TimeoutException e) {
-            e.printStackTrace();
-        }
-
-        // do something with response
-
-        Log.d(Constants.TAG, response + "");
-    }
 }

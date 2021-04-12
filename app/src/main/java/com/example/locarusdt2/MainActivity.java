@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
         tokens = getSharedPreferences("Token", MODE_PRIVATE);
         editor = tokens.edit();
         // Проверка accessToken
+
         if (tokens.contains("accessToken")){
             if (tokens.getLong("expires",0)<System.currentTimeMillis() / 1000L){
                 Log.d(Constants.TAG,"");
@@ -105,7 +106,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void getJSon(JSONObject postData) {
-        String postUrl = "http://stage.local/api/";
+        String postUrl = Constants.SERVER;
         RequestQueue requestQueue = Volley.newRequestQueue(getApplicationContext());
 
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.POST, postUrl, postData, (JSONObject response) -> {

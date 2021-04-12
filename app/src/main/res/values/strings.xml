@@ -4,4 +4,5 @@
     <string name="password">Пароль</string>
     <string name="signUp">Войти</string>
     <string name="signOut">Выход</string>
+    <string name="sensorList">Список датчиков</string>
 </resources>

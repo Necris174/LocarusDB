@@ -1,12 +1,25 @@
 package com.example.locarusdt2;
 
-public class Sensors {
+import androidx.annotation.Nullable;
+
+import java.io.Serializable;
+
+public class Sensors implements Serializable {
     private String name;
     private String value;
     private String units;
     private String varName;
     private Integer ooType;
     private Long time;
+    private boolean active;
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
 
     public Sensors(String name, String value, String units, String varName, Integer ooType, Long time) {
         this.name = name;
@@ -15,6 +28,23 @@ public class Sensors {
         this.varName = varName;
         this.ooType = ooType;
         this.time = time;
+        this.active = true;
+    }
+
+    public Sensors(String name, String value) {
+        this.name = name;
+        this.value = value;
+        this.active = true;
+    }
+
+    public Sensors(String name) {
+        this.name = name;
+        this.active = true;
+    }
+
+    public Sensors(String name, boolean active) {
+        this.name = name;
+        this.active = active;
     }
 
     public String getName() {
@@ -64,4 +94,10 @@ public class Sensors {
     public void setTime(Long time) {
         this.time = time;
     }
+
+    @Override
+    public String toString() {
+        return this.name;
+    }
+
 }

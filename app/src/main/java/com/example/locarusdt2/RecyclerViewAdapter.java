@@ -29,7 +29,6 @@ public class RecyclerViewAdapter extends RecyclerView.Adapter<RecyclerViewAdapte
     @Override
     public void onBindViewHolder(@NonNull RecyclerViewViewHolder holder, int position) {
         SensorCard sensorCard = arrayList.get(position);
-
         holder.imageView.setImageResource(sensorCard.getImageResource());
         holder.textView.setText(sensorCard.getText1());
         holder.textView2.setText(sensorCard.getText2());
