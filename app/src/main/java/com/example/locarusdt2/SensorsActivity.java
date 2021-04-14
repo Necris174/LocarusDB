@@ -124,7 +124,7 @@ public class SensorsActivity extends AppCompatActivity {
         }
         sensorsArrayList = SharedPreferencesReceive.getSensors(tokens.getString("arraySensors", ""));
         for (Sensors sensors1 : sensorsArrayList) {
-            if (activeSensors.contains(sensors1.getName())){
+            if (activeSensors!=null&&activeSensors.contains(sensors1.getName())){
                 arrayList.add(new SensorCard(R.drawable.ic_baseline_speed_24, sensors1.getValue(), sensors1.getName()));
             }
         }
@@ -223,7 +223,9 @@ public class SensorsActivity extends AppCompatActivity {
                                         Long time = sensors.getJSONObject(i).getLong("time");
                                         Sensors sensor = new Sensors(name, value, units, varName, ooType, time);
 
-                                        if (activeSensors!=null&&activeSensors.contains(name)) {
+                                        if (activeSensors==null) {
+                                            sensorsArrayList.add(sensor);
+                                        }else if (activeSensors.contains(name)){
                                             sensorsArrayList.add(sensor);
                                         }
                                     }
